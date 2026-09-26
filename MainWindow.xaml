@@ -8,7 +8,6 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="60"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="*"/>
             <RowDefinition Height="40"/>
         </Grid.RowDefinitions>
 
@@ -24,43 +23,36 @@
             </Grid>
         </Border>
 
-        <!-- 上半部：正在播送 -->
-        <Border Grid.Row="1" Background="#1a1a2e" Margin="20,10,20,5">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Text="正在播送" FontSize="18" Foreground="#888" Margin="0,0,0,10"/>
-                <TextBlock Grid.Row="1" x:Name="CurrentPlaying"
-                           Text="等待导播指令..."
-                           FontSize="72" FontWeight="Bold" Foreground="#4ecca3"
-                           TextWrapping="Wrap" VerticalAlignment="Center"/>
-            </Grid>
-        </Border>
-
-        <!-- 下半部：即将播送 -->
-        <Border Grid.Row="2" Background="#0f3460" Margin="20,5,20,10" CornerRadius="8">
-            <Grid>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Text="即将播送" FontSize="18" Foreground="#888" Margin="0,0,0,10"/>
-                <TextBlock Grid.Row="1" x:Name="NextPreview"
-                           Text="等待导播指令..."
-                           FontSize="56" FontWeight="Bold" Foreground="#e94560"
-                           TextWrapping="Wrap" VerticalAlignment="Center"
+        <!--
+            主显示区：只呈现「即将播送：/ 正在播送：」加下一行机位名。
+            有待切机位时是「即将播送」（琥珀色），导播确认已切后自动
+            变成「正在播送」（绿色），切换完全由后端下发的 shot_state 驱动。
+        -->
+        <Border x:Name="ProgramPanel" Grid.Row="1" Background="#0f3460" Margin="20" CornerRadius="12">
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="40">
+                <TextBlock x:Name="StateLabel"
+                           Text="等待导播指令"
+                           FontSize="40"
+                           Foreground="#e0e0e0"
                            TextAlignment="Center"/>
-            </Grid>
+                <TextBlock x:Name="ProgramName"
+                           Text="—"
+                           Margin="0,24,0,0"
+                           FontSize="110"
+                           FontWeight="Bold"
+                           Foreground="#4ecca3"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
         </Border>
 
         <!-- 底部状态栏 -->
-        <Border Grid.Row="3" Background="#16213e" Padding="20,0">
+        <Border Grid.Row="2" Background="#16213e" Padding="20,0">
             <Grid>
-                <TextBlock x:Name="LastUpdateText" Text="等待连接..." 
+                <TextBlock x:Name="LastUpdateText" Text="等待连接..."
                            Foreground="#666" FontSize="12" VerticalAlignment="Center"/>
-                <TextBlock Text="校园直播导播协调系统 v1.0" 
+                <TextBlock Text="校园直播导播协调系统 v1.0"
                            Foreground="#666" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center"/>
             </Grid>
         </Border>

@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net.WebSockets;
 using System.Text;
 using CommentatorApp.Models;
@@ -17,7 +18,13 @@ public class WebSocketClient : IDisposable
     private AppConfig _config;
 
     public event Action<bool>? ConnectionChanged;
-    public event Action<string, string>? NextShotReceived; // (type, content)
+
+    /// <summary>收到切台状态。参数为 (是否待切, 显示的机位名, 标签文字)。</summary>
+    public event Action<bool, string, string>? ShotStateReceived;
+
+    /// <summary>收到内部消息（chat）。</summary>
+    public event Action<string>? ChatReceived;
+
     public event Action<string>? SystemMessage;
 
     public bool IsConnected => _ws?.State == WebSocketState.Open;
@@ -66,19 +73,28 @@ public class WebSocketClient : IDisposable
         {
             while (_ws?.State == WebSocketState.Open && !_cts?.Token.IsCancellationRequested == true)
             {
-                var result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), _cts!.Token);
-
-                if (result.MessageType == WebSocketMessageType.Close)
+                // 一条 WS 消息可能被拆成多帧，必须按 EndOfMessage 拼完再解析，
+                // 否则 JSON 会被截断，shot_state 这类消息会被静默丢掉。
+                using var frame = new MemoryStream();
+                WebSocketReceiveResult result;
+                do
                 {
-                    ConnectionChanged?.Invoke(false);
-                    if (!_intentionalClose) ScheduleReconnect();
-                    return;
-                }
+                    result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), _cts!.Token);
+                    if (result.MessageType == WebSocketMessageType.Close)
+                    {
+                        ConnectionChanged?.Invoke(false);
+                        if (!_intentionalClose) ScheduleReconnect();
+                        return;
+                    }
+                    if (result.MessageType == WebSocketMessageType.Text)
+                    {
+                        frame.Write(buffer, 0, result.Count);
+                    }
+                } while (!result.EndOfMessage);
 
-                if (result.MessageType == WebSocketMessageType.Text)
+                if (frame.Length > 0)
                 {
-                    var json = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                    HandleMessage(json);
+                    HandleMessage(Encoding.UTF8.GetString(frame.ToArray()));
                 }
             }
         }
@@ -100,22 +116,21 @@ public class WebSocketClient : IDisposable
 
             switch (type)
             {
-                case "next_shot":
-                    var content = payload?["content"]?.ToString() ?? "";
-                    NextShotReceived?.Invoke("next_shot", content);
-                    break;
-                case "confirm_switch":
-                    var switchContent = payload?["content"]?.ToString() ?? "";
-                    NextShotReceived?.Invoke("confirm_switch", switchContent);
+                case "shot_state":
+                    // 导播端每次切台都下发完整状态：current=当前播送，next=即将切台。
+                    var state = payload?.ToObject<ShotState>() ?? new ShotState();
+                    ShotStateReceived?.Invoke(state.HasPending, state.Program, state.Label);
                     break;
                 case "chat":
                     var chatMsg = payload?["message"]?.ToString() ?? "";
+                    // 心跳只是保活信号，后端不会再转发，这里只是兜底跳过。
                     if (chatMsg == "heartbeat") break;
-                    NextShotReceived?.Invoke("chat", chatMsg);
+                    ChatReceived?.Invoke(chatMsg);
                     break;
                 case "system":
-                    var sysMsg = payload?["message"]?.ToString() ?? "";
-                    SystemMessage?.Invoke(sysMsg);
+                    SystemMessage?.Invoke(payload?["message"]?.ToString()
+                        ?? payload?["error"]?.ToString()
+                        ?? "");
                     break;
             }
         }
