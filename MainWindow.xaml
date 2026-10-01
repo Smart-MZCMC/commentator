@@ -7,6 +7,8 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="60"/>
+            <!-- 版本提示条：默认折叠，只在不匹配时由代码显示。 -->
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="40"/>
         </Grid.RowDefinitions>
@@ -17,9 +19,40 @@
                 <TextBlock Text="解说端" FontSize="22" FontWeight="Bold"
                            Foreground="White" VerticalAlignment="Center"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock x:Name="VersionSelfText" Text="" Foreground="#7d7d9a"
+                               FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
                     <Ellipse x:Name="StatusDot" Width="12" Height="12" Fill="Red" Margin="0,0,8,0"/>
                     <TextBlock x:Name="StatusText" Text="连接中..." Foreground="White" FontSize="14" VerticalAlignment="Center"/>
                 </StackPanel>
+            </Grid>
+        </Border>
+
+        <!--
+            版本不一致提示条。
+
+            为什么用可关闭的条而不是 MessageBox：这是解说端，播送中弹对话框会
+            挡视线；而「低于最低适配版本」这种必须让人知道的情况又不能完全静默，
+            所以给一条常驻在顶部的横幅。点关闭后本次不再打扰，但轮询继续——
+            版本再次变化时还会提示。
+        -->
+        <Border x:Name="VersionBanner" Grid.Row="1" Visibility="Collapsed"
+                Background="#2b2038" BorderBrush="#e94560" BorderThickness="0,0,0,1"
+                Padding="20,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="VersionBannerText" Grid.Column="0" Text=""
+                           Foreground="#e94560" FontSize="12" VerticalAlignment="Center"
+                           TextWrapping="Wrap"/>
+                <TextBlock x:Name="VersionSelfVersionText" Grid.Column="1" Text=""
+                           Foreground="#7d7d9a" FontSize="11" VerticalAlignment="Center"
+                           Margin="12,0"/>
+                <Button Grid.Column="2" Content="知道了" Click="OnVersionBannerClose"
+                        Background="Transparent" BorderThickness="0" Foreground="#7d7d9a"
+                        FontSize="12" Cursor="Hand" Padding="8,0" VerticalAlignment="Center"/>
             </Grid>
         </Border>
 
@@ -28,7 +61,7 @@
             有待切机位时是「即将播送」（琥珀色），导播确认已切后自动
             变成「正在播送」（绿色），切换完全由后端下发的 shot_state 驱动。
         -->
-        <Border x:Name="ProgramPanel" Grid.Row="1" Background="#0f3460" Margin="20" CornerRadius="12">
+        <Border x:Name="ProgramPanel" Grid.Row="2" Background="#0f3460" Margin="20" CornerRadius="12">
             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="40">
                 <TextBlock x:Name="StateLabel"
                            Text="等待导播指令"
@@ -48,7 +81,7 @@
         </Border>
 
         <!-- 底部状态栏 -->
-        <Border Grid.Row="2" Background="#16213e" Padding="20,0">
+        <Border Grid.Row="3" Background="#16213e" Padding="20,0">
             <Grid>
                 <TextBlock x:Name="LastUpdateText" Text="等待连接..."
                            Foreground="#666" FontSize="12" VerticalAlignment="Center"/>

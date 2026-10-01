@@ -22,3 +22,4 @@ D:\Project\smart-mzcmc\CommentatorApp\obj\Release\net10.0-windows\refint\Comment
 D:\Project\smart-mzcmc\CommentatorApp\obj\Release\net10.0-windows\CommentatorApp.pdb
 D:\Project\smart-mzcmc\CommentatorApp\obj\Release\net10.0-windows\CommentatorApp.genruntimeconfig.cache
 D:\Project\smart-mzcmc\CommentatorApp\obj\Release\net10.0-windows\ref\CommentatorApp.dll
+D:\Project\smart-mzcmc\CommentatorApp\obj\Release\net10.0-windows\CommentatorApp.sourcelink.json

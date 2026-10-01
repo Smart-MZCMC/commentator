@@ -1,0 +1,7 @@
+D:\Project\smart-mzcmc\CommentatorApp\publish\CommentatorApp.exe
+D:\Project\smart-mzcmc\CommentatorApp\publish\config.json
+D:\Project\smart-mzcmc\CommentatorApp\publish\CommentatorApp.dll
+D:\Project\smart-mzcmc\CommentatorApp\publish\CommentatorApp.deps.json
+D:\Project\smart-mzcmc\CommentatorApp\publish\CommentatorApp.runtimeconfig.json
+D:\Project\smart-mzcmc\CommentatorApp\publish\CommentatorApp.pdb
+D:\Project\smart-mzcmc\CommentatorApp\publish\Newtonsoft.Json.dll
