@@ -1,118 +1,59 @@
-using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using CommentatorApp.Models;
 using CommentatorApp.Services;
-using Newtonsoft.Json;
 
 namespace CommentatorApp;
 
-public partial class MainWindow : Window
+/// <summary>
+/// 状态窗口。播送标题在 <see cref="TitleWindow"/>，这里只管版本号、连接状态、
+/// 内部消息和版本横幅——都是「不用盯着看，但出问题时要看」的东西。
+/// </summary>
+public partial class StatusWindow : Window
 {
-    /// <summary>「正在播送」配色：绿色，表示画面就是这个机位。</summary>
-    private static readonly Brush OnAirBrush = Freeze("#4ecca3");
+    /// <summary>日志行的上限。超出就丢最旧的，不然长时间运行会一直吃内存。</summary>
+    private const int MaxLogLines = 500;
 
-    /// <summary>「即将播送」配色：琥珀红，表示画面还没切过去。</summary>
-    private static readonly Brush PendingBrush = Freeze("#e94560");
-
-    /// <summary>版本提示条配色：低于最低适配版本用红（真的有功能异常），落后用琥珀。</summary>
-    private static readonly Brush VersionUrgentBrush = Freeze("#e94560");
-
-    private static readonly Brush VersionWarnBrush = Freeze("#d9a441");
-    private static readonly Brush VersionBannerBackground = Freeze("#2b2038");
-
-    private static readonly Brush PanelOnAirBrush = Freeze("#0f3460");
-    private static readonly Brush PanelPendingBrush = Freeze("#3a1f2b");
-    private static readonly Brush IdleBrush = Freeze("#8a8a8a");
-
-    private WebSocketClient? _wsClient;
-    private AppConfig _config = new();
-    private VersionService? _versionService;
     private bool _versionBannerDismissed;
 
-    public MainWindow()
+    public StatusWindow(AppConfig config)
     {
         InitializeComponent();
-        LoadConfig();
+
         // 标题栏常驻显示本端版本，方便现场对着服务端确认。
         VersionSelfText.Text = $"v{AppVersion.Current}";
-        RenderShotState(hasPending: false, program: "", label: "等待导播指令");
     }
 
-    private static Brush Freeze(string hex)
+    /// <summary>接上共享会话。所有回调都在 UI 线程上，不需要再 marshal。</summary>
+    public void Attach(BroadcastSession session)
     {
-        var brush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
-        // 冻结后可以跨线程安全共用，省掉每次切台都新建画刷。
-        brush.Freeze();
-        return brush;
-    }
-
-    private void LoadConfig()
-    {
-        try
+        session.ConnectionChanged += connected =>
         {
-            var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "config.json");
-            if (File.Exists(configPath))
-            {
-                var json = File.ReadAllText(configPath);
-                _config = JsonConvert.DeserializeObject<AppConfig>(json) ?? new AppConfig();
-            }
-        }
-        catch { }
-    }
+            StatusDot.Fill = connected ? Brushes.Green : Brushes.Red;
+            StatusText.Text = connected ? "已连接" : "连接中...";
+            Log(connected ? "已连接到服务端" : "连接断开，正在重试");
+        };
 
-    protected override void OnSourceInitialized(EventArgs e)
-    {
-        base.OnSourceInitialized(e);
-        _ = ConnectWebSocket();
-        StartVersionWatch();
+        session.ShotStateChanged += state =>
+        {
+            // 切台状态也记一笔：现场复盘「导播到底什么时候切的」时，
+            // 只有这里留得下时间线，标题窗口是一闪而过的。
+            Log(state.HasPending ? $"即将播送：{state.Next}" : $"正在播送：{state.Current}");
+            LastUpdateText.Text = state.HasPending ? "导播已预切，等待确认" : "已确认切台";
+        };
+
+        session.SystemMessage += Log;
+        session.VersionChecked += ApplyVersionCheck;
     }
 
     /// <summary>
-    /// 周期性检查与服务端的版本是否匹配。
+    /// 周期性检查的结论。
     ///
-    /// 只做提示，不阻断任何功能：这是解说端，播送中出问题比提示更重要。
+    /// 只提示不阻断：这是解说端，播送中出问题比提示更重要。
     /// </summary>
-    private void StartVersionWatch()
+    private void ApplyVersionCheck(AppVersion.VersionCheck check)
     {
-        try
-        {
-            _versionService = new VersionService(_config.ServerUrl);
-        }
-        catch
-        {
-            return;
-        }
-
-        var timer = new System.Windows.Threading.DispatcherTimer
-        {
-            Interval = VersionService.PollInterval,
-        };
-        timer.Tick += async (_, _) =>
-        {
-            timer.Stop();
-            try
-            {
-                await RefreshVersionBannerAsync();
-            }
-            finally
-            {
-                // 无论成功失败都重新开始，避免一次异常后永远不再检查。
-                timer.Start();
-            }
-        };
-        timer.Start();
-
-        // 立刻查一次：现场部署完新版本，解说员不该等 5 分钟才看到提示。
-        _ = RefreshVersionBannerAsync();
-    }
-
-    private async Task RefreshVersionBannerAsync()
-    {
-        var service = _versionService;
-        if (service is null) return;
-
-        var check = await service.FetchAsync().ConfigureAwait(true);
         if (_versionBannerDismissed) return;
 
         var text = DescribeVersionCheck(check);
@@ -150,65 +91,39 @@ public partial class MainWindow : Window
         VersionBanner.Visibility = Visibility.Collapsed;
     }
 
-    private async Task ConnectWebSocket()
+    /// <summary>
+    /// 标题窗口的鼠标穿透开关在这里也能改。
+    ///
+    /// 标题窗口铺满屏幕时会自动打开穿透（不然桌面点不动），而穿透之后它自己
+    /// 就接收不到右键了，菜单再也唤不出来。状态窗口是那时唯一还能点到的窗口，
+    /// 所以这条逃生口必须留在这儿，而不是只写在标题窗口的菜单里。
+    /// </summary>
+    private void OnToggleTitleClickThrough(object sender, RoutedEventArgs e)
     {
-        _wsClient?.Dispose();
-        _wsClient = new WebSocketClient(_config);
+        if (WindowHelper.FindWindow<TitleWindow>() is not { } title) return;
 
-        _wsClient.ConnectionChanged += connected =>
-        {
-            Dispatcher.Invoke(() =>
-            {
-                StatusDot.Fill = connected ? Brushes.Green : Brushes.Red;
-                StatusText.Text = connected ? "已连接" : "连接中...";
-            });
-        };
-
-        // 切台状态：后端每次都同时给出「当前播送」和「即将切台」，
-        // 这里直接照着渲染，不做任何本地推断。
-        _wsClient.ShotStateReceived += (hasPending, program, label) =>
-        {
-            Dispatcher.Invoke(() => RenderShotState(hasPending, program, label));
-        };
-
-        _wsClient.ChatReceived += msg =>
-        {
-            Dispatcher.Invoke(() => LastUpdateText.Text = $"[内部消息] {msg}");
-        };
-
-        _wsClient.SystemMessage += msg =>
-        {
-            Dispatcher.Invoke(() => LastUpdateText.Text = $"[系统] {msg}");
-        };
-
-        await _wsClient.ConnectAsync();
+        var enabled = sender is MenuItem item && item.IsChecked;
+        WindowHelper.SetClickThrough(title, enabled);
+        Log(enabled ? "已关闭播送标题的鼠标穿透" : "已打开播送标题的鼠标穿透");
     }
 
     /// <summary>
-    /// 渲染唯一的播送状态：有待切机位显示「即将播送」，否则显示「正在播送」。
+    /// 往消息流水里追加一行。
+    ///
+    /// 带时间戳前缀而不是只留一条状态：副屏那边看不出发生了什么，导播跑过来
+    /// 问「刚才那下到底切没切」时，这扇窗口是唯一的证据。
     /// </summary>
-    private void RenderShotState(bool hasPending, string program, string label)
+    private void Log(string message)
     {
-        if (string.IsNullOrWhiteSpace(program))
+        if (string.IsNullOrWhiteSpace(message)) return;
+
+        LogList.Items.Add($"{DateTime.Now:HH:mm:ss}  {message}");
+        while (LogList.Items.Count > MaxLogLines)
         {
-            StateLabel.Text = "等待导播指令";
-            StateLabel.Foreground = IdleBrush;
-            ProgramName.Text = "—";
-            ProgramName.Foreground = IdleBrush;
-            ProgramPanel.Background = PanelOnAirBrush;
-            return;
+            LogList.Items.RemoveAt(0);
         }
 
-        StateLabel.Text = label;
-        ProgramName.Text = program;
-        StateLabel.Foreground = hasPending ? PendingBrush : IdleBrush;
-        ProgramName.Foreground = hasPending ? PendingBrush : OnAirBrush;
-        ProgramPanel.Background = hasPending ? PanelPendingBrush : PanelOnAirBrush;
-    }
-
-    protected override void OnClosed(EventArgs e)
-    {
-        _wsClient?.Dispose();
-        base.OnClosed(e);
+        // 新行自动滚到底，否则最后一条永远停在可视区外面。
+        if (LogList.Items.Count > 0) LogList.ScrollIntoView(LogList.Items[^1]);
     }
 }

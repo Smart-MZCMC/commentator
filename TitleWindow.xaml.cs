@@ -141,8 +141,21 @@ public partial class TitleWindow : Window
         var scale = DpiScaleX;
         var (canvasWpx, canvasHpx) = CanvasSizeForConfig();
 
+        // 画布只缩不放，且必须完整留在屏幕内。
+        //
+        // 之前是「按配置尺寸居中摆放」，看着像个无损的居中，实际是：屏幕比
+        // 1920×1080 小的时候（1366×768、1440×900 这类笔记本）居中一个比屏幕
+        // 大的窗口，等于把大半张画面摆到屏外——现场看着就是「标题飞出屏幕」。
+        //
+        // 缩小是等比的，16:9 不会破；抓成信号源时芯象照旧把它缩放到输出分辨率，
+        // 抓到的仍然是一张干净的 16:9 画面。放大反而不行：桌面 4K 时没必要把
+        // 包装层撑到 3840，配置里写 1920 就是 1920。
+        var fit = Math.Min(1.0, Math.Min(workPx.Width / canvasWpx, workPx.Height / canvasHpx));
+        canvasWpx *= fit;
+        canvasHpx *= fit;
+
         // 窗口尺寸用 DIP 赋值、窗口内部几何也全在 DIP 里；只有摆位和边距用物理像素。
-        // 除以 scale 是为了让物理尺寸正好等于配置的像素数——桌面缩放 150% 时
+        // 除以 scale 是为了让物理尺寸正好等于上面的像素数——桌面缩放 150% 时
         // 1920px 的包装层仍然是 1920 个物理像素，不会变成 2880 再被芯象缩回去。
         var w = canvasWpx / scale;
         var h = canvasHpx / scale;
@@ -151,20 +164,21 @@ public partial class TitleWindow : Window
         Width = w;
         Height = h;
 
-        // 卡片按画面宽度定尺寸，内部所有尺寸 = 设计值 × u。
-        var cardW = workPx.Width * CardWidthRatioForConfig();
-        var u = cardW / DesignW;
-        var cardH = DesignH * u;
-
-        // 下三分之一、靠右。压边留出电视自己的字幕栏位置。
-        var cardX = workPx.Right - workPx.Width * MarginRightRatioForConfig() - cardW;
-        var cardY = workPx.Bottom - workPx.Height * MarginBottomRatioForConfig() - cardH;
-
-        // 整块画布摆到所在显示器的左上角：窗口等于一张画面，位置只影响
-        // 解说员本地看到的浮层，抓成信号源时不影响播出结果。
+        // 画布居中摆在所在显示器上。窗口等于一张画面，这个位置只影响解说员本地
+        // 看到的浮层，抓成信号源时不影响播出结果。
         var canvasX = workPx.Left + (workPx.Width - canvasWpx) / 2;
         var canvasY = workPx.Top + (workPx.Height - canvasHpx) / 2;
         WindowHelper.MoveToPx(this, (int)Math.Round(canvasX), (int)Math.Round(canvasY));
+
+        // 卡片按**画面**宽度定尺寸（不是显示器宽度）：屏幕一小、画面跟着缩了之后，
+        // CardWidthRatio 仍然要表示「占画面宽度的比例」，否则卡片会相对变大。
+        var cardW = canvasWpx * CardWidthRatioForConfig();
+        var u = cardW / DesignW;
+        var cardH = DesignH * u;
+
+        // 画面内的下三分之一、靠右。压边留出电视自己的字幕栏位置。
+        var cardX = canvasX + canvasWpx - canvasWpx * MarginRightRatioForConfig() - cardW;
+        var cardY = canvasY + canvasHpx - canvasHpx * MarginBottomRatioForConfig() - cardH;
 
         var stroke = Math.Max(1, cardW * BorderPx);
 

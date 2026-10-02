@@ -1,9 +1,30 @@
-<Window x:Class="CommentatorApp.MainWindow"
+<Window x:Class="CommentatorApp.StatusWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="解说端 - 校园直播导播协调系统" Height="600" Width="900"
+        Title="解说端状态 - 校园直播导播协调系统" Height="600" Width="900"
         WindowState="Maximized" Background="#1a1a2e"
         WindowStartupLocation="CenterScreen">
+    <!--
+        状态窗口。只放「不用盯着看」的东西：版本号、连接状态、内部消息、版本横幅。
+
+        为什么和播送标题分成两个窗口：标题窗口要整块搬到副屏上，尺寸和主屏
+        不一样。挤在一个窗口里的话，副屏一拉伸，这些字也跟着变形；而版本横幅
+        这类提示又不能没有——它是「必须让人知道」的那类信息，不能静默。
+    -->
+    <!--
+        右键菜单里那一条「鼠标穿透」是标题窗口的唯一逃生口。
+
+        播送标题现在是一整张 1920×1080 的画面，铺满屏幕时会自动打开鼠标穿透
+        （不然操作员连桌面都点不进去）。而穿透之后标题窗口本身就点不到了，
+        右键菜单再也唤不出来——所以关掉穿透只能在这里做。此时状态窗口正是
+        唯一能点到的窗口。
+    -->
+    <Window.ContextMenu>
+        <ContextMenu>
+            <MenuItem x:Name="ClickThroughItem" Header="播送标题：鼠标穿透"
+                      IsCheckable="True" IsChecked="False" Click="OnToggleTitleClickThrough"/>
+        </ContextMenu>
+    </Window.ContextMenu>
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="60"/>
@@ -16,7 +37,7 @@
         <!-- 顶部标题栏 -->
         <Border Grid.Row="0" Background="#16213e" Padding="20,0">
             <Grid>
-                <TextBlock Text="解说端" FontSize="22" FontWeight="Bold"
+                <TextBlock Text="解说端状态" FontSize="22" FontWeight="Bold"
                            Foreground="White" VerticalAlignment="Center"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                     <TextBlock x:Name="VersionSelfText" Text="" Foreground="#7d7d9a"
@@ -57,27 +78,29 @@
         </Border>
 
         <!--
-            主显示区：只呈现「即将播送：/ 正在播送：」加下一行机位名。
-            有待切机位时是「即将播送」（琥珀色），导播确认已切后自动
-            变成「正在播送」（绿色），切换完全由后端下发的 shot_state 驱动。
+            正文区改成消息流水。播送标题在另一个窗口里，这里空着没意义；
+            改成日志之后，现场出问题时能直接看最近发生了什么，而不是去翻控制台。
         -->
-        <Border x:Name="ProgramPanel" Grid.Row="2" Background="#0f3460" Margin="20" CornerRadius="12">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="40">
-                <TextBlock x:Name="StateLabel"
-                           Text="等待导播指令"
-                           FontSize="40"
-                           Foreground="#e0e0e0"
-                           TextAlignment="Center"/>
-                <TextBlock x:Name="ProgramName"
-                           Text="—"
-                           Margin="0,24,0,0"
-                           FontSize="110"
-                           FontWeight="Bold"
-                           Foreground="#4ecca3"
-                           TextWrapping="Wrap"
-                           TextAlignment="Center"
-                           TextTrimming="CharacterEllipsis"/>
-            </StackPanel>
+        <Border Grid.Row="2" Background="#16213e" Margin="20" Padding="24">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="消息" Foreground="#7d7d9a"
+                           FontSize="14" FontWeight="Bold" Margin="0,0,0,12"/>
+                <ListBox x:Name="LogList" Grid.Row="1" Background="Transparent"
+                         BorderThickness="0" Foreground="#d0d0e0"
+                         FontFamily="Consolas" FontSize="13"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0,3"/>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
+            </Grid>
         </Border>
 
         <!-- 底部状态栏 -->
