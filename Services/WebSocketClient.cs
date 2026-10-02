@@ -1,5 +1,4 @@
 using System.IO;
-using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
 using CommentatorApp.Models;
@@ -29,8 +28,15 @@ public class WebSocketClient : IDisposable
 
     public event Action<bool>? ConnectionChanged;
 
-    /// <summary>收到切台状态。参数为 (是否待切, 显示的机位名, 标签文字)。</summary>
-    public event Action<bool, string, string>? ShotStateReceived;
+    /// <summary>
+    /// 收到切台状态。
+    ///
+    /// 整个 <see cref="ShotState"/> 一起给，而不是拆成「是否待切 / 显示名 / 标签」
+    /// 三个位置参数：两个窗口都要读它，拆开之后每个调用点都得自己拼回去，
+    /// 而拼接规则（该显示 current 还是 next）一旦两处不一致，标题窗口和状态窗口
+    /// 就会显示不同的字。
+    /// </summary>
+    public event Action<ShotState>? ShotStateReceived;
 
     /// <summary>收到内部消息（chat）。</summary>
     public event Action<string>? ChatReceived;
@@ -55,42 +61,14 @@ public class WebSocketClient : IDisposable
     ///
     /// 没配账号时返回 null 且不发请求：这样在没有启用成员校验的部署上，
     /// 解说端的行为与改动前完全一致——现场不会因为少填一个字段而起不来。
+    ///
+    /// 登录本身搬到 <see cref="AuthClient"/>：拉项目名的 HTTP 请求也要用令牌，
+    /// 两处各留一份迟早会只改一处。
     /// </summary>
     private async Task<string?> LoginAsync()
     {
-        if (string.IsNullOrWhiteSpace(_config.Username) || string.IsNullOrEmpty(_config.Password))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-            var body = JsonConvert.SerializeObject(new
-            {
-                username = _config.Username,
-                password = _config.Password
-            });
-            var url = $"{_config.ServerUrl.TrimEnd('/')}/api/auth/login";
-            using var content = new StringContent(body, Encoding.UTF8, "application/json");
-            using var resp = await http.PostAsync(url, content);
-            if (!resp.IsSuccessStatusCode)
-            {
-                // 密码错、账号被停用都会走到这里。一定要透出到界面：否则现场
-                // 只看到一直「连接中...」，完全分不清是凭据问题还是网络问题。
-                var detail = await resp.Content.ReadAsStringAsync();
-                SystemMessage?.Invoke($"登录失败 HTTP {(int)resp.StatusCode}：{detail}");
-                return null;
-            }
-
-            var json = JObject.Parse(await resp.Content.ReadAsStringAsync());
-            return json["token"]?.ToString();
-        }
-        catch (Exception ex)
-        {
-            SystemMessage?.Invoke($"登录异常：{ex.Message}");
-            return null;
-        }
+        var (token, error) = await AuthClient.LoginAsync(_config, SystemMessage);
+        return error is null ? token : null;
     }
 
     private async Task DoConnectAsync()
@@ -183,8 +161,7 @@ public class WebSocketClient : IDisposable
             {
                 case "shot_state":
                     // 导播端每次切台都下发完整状态：current=当前播送，next=即将切台。
-                    var state = payload?.ToObject<ShotState>() ?? new ShotState();
-                    ShotStateReceived?.Invoke(state.HasPending, state.Program, state.Label);
+                    ShotStateReceived?.Invoke(payload?.ToObject<ShotState>() ?? new ShotState());
                     break;
                 case "chat":
                     var chatMsg = payload?["message"]?.ToString() ?? "";
@@ -224,7 +201,7 @@ public class WebSocketClient : IDisposable
         // 没有当前机位时不要冒充成一次切台，交给界面继续显示「等待导播指令」。
         if (string.IsNullOrEmpty(state.Current) && string.IsNullOrEmpty(state.Next)) return;
 
-        ShotStateReceived?.Invoke(state.HasPending, state.Program, state.Label);
+        ShotStateReceived?.Invoke(state);
     }
 
     private void StartHeartbeat()

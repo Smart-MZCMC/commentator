@@ -1,0 +1,99 @@
+<Window x:Class="CommentatorApp.TitleWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="播送标题" Width="1920" Height="1080"
+        WindowStyle="None" ResizeMode="NoResize" Topmost="True"
+        ShowInTaskbar="False"
+        AllowsTransparency="True" Background="Transparent"
+        WindowStartupLocation="Manual">
+
+    <!--
+        透明无边框 Overlay。所有元素直接画在 OverlayCanvas 上，
+        与 tools/render_title_preview.py 的绘制顺序一致：
+        灰底 → 外框 → 蓝条 → 竖条 → 文字。
+
+        命中测试只有 OverlayCanvas 一个入口，下面每一层都是装饰件、
+        一律 IsHitTestVisible="False"。
+
+        为什么必须这样：Canvas 按子元素**逆序**命中测试，也就是最后声明的
+        CardOutline 先测。它是个 Fill="Transparent" 的矩形，而 WPF 里透明
+        填充照样参与命中测试（要 Fill="{x:Null}" 才不测），它又正好盖住
+        Card——于是挂在 Card 上的 ContextMenu 和 MouseLeftButtonDown
+        全都收不到事件：右键弹出来是「什么都没有」，按住也拖不动窗口。
+        菜单因此改挂到 Window 上，覆盖整个窗口，包括右端竖条那一条。
+    -->
+    <Window.ContextMenu>
+        <ContextMenu>
+            <MenuItem Header="置顶显示" IsCheckable="True" IsChecked="True"
+                      Click="OnToggleTopmost"/>
+            <MenuItem x:Name="ClickThroughItem" Header="鼠标穿透" IsCheckable="True" IsChecked="False"
+                      Click="OnToggleClickThrough"/>
+            <Separator/>
+            <MenuItem Header="显示状态窗口" Click="OnShowStatusWindow"/>
+            <Separator/>
+            <MenuItem Header="退出解说端" Click="OnQuit"/>
+        </ContextMenu>
+    </Window.ContextMenu>
+
+    <Canvas x:Name="OverlayCanvas"
+            Background="Transparent"
+            MouseLeftButtonDown="OnDrag">
+
+        <!-- 灰色主体（只负责底色） -->
+        <Border x:Name="Card"
+                Background="#DAE0E5"
+                IsHitTestVisible="False"/>
+
+        <!-- 主体外框描边 -->
+        <Rectangle x:Name="CardOutline"
+                   Stroke="#F2F5F7" StrokeThickness="3" Fill="Transparent"
+                   IsHitTestVisible="False"/>
+
+        <!-- 顶部蓝色标题栏（颜色固定，不随状态变） -->
+        <Border x:Name="EventBar"
+                Background="#0054B7"
+                BorderBrush="#F2F5F7"
+                BorderThickness="3"
+                IsHitTestVisible="False">
+            <TextBlock x:Name="EventNameText"
+                       Text=""
+                       FontWeight="Bold"
+                       Foreground="White"
+                       TextAlignment="Center"
+                       VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis"/>
+        </Border>
+
+        <!-- 右侧竖条（颜色固定，不随状态变） -->
+        <Border x:Name="AccentBar"
+                Background="#0046A5"
+                IsHitTestVisible="False"/>
+
+        <!-- 底行：Chip + 机位名 -->
+        <Grid x:Name="ProgramRow" IsHitTestVisible="False">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border x:Name="StateChip" Grid.Column="0" Background="#48C4A0">
+                <TextBlock x:Name="StateLabel"
+                           Text="正在播送"
+                           FontWeight="Bold"
+                           Foreground="White"
+                           TextAlignment="Center"
+                           VerticalAlignment="Center"/>
+            </Border>
+
+            <TextBlock x:Name="ProgramName"
+                       Grid.Column="1"
+                       Text="—"
+                       FontWeight="Bold"
+                       Foreground="#141414"
+                       TextAlignment="Center"
+                       VerticalAlignment="Center"
+                       TextWrapping="NoWrap"
+                       TextTrimming="CharacterEllipsis"/>
+        </Grid>
+    </Canvas>
+</Window>
