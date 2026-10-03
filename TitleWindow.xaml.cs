@@ -23,9 +23,14 @@ public partial class TitleWindow : Window
     // 窗口就是这张卡片本身：采集端把它当信号源抓走，再摆到输出画面的
     // 位置和大小上，所以窗口不透明、不做成整屏浮层（理由见 TitleWindow.xaml）。
     //
-    // 卡片内部按 tools/render_title_preview.py 的 CARD_W=300 / CARD_H=87 反推，
-    // 竖条算进画布所以设计宽是 310。下面所有比例都以 DesignW / DesignH 为分母，
-    // 实际像素 = 设计值 × u，u = 卡片宽 / DesignW。
+    // 下面每一个数值都由 tools/measure_ref.py 量 tools/reference.png 换算而来，
+    // 设计宽取 310（换算系数 310 / 2143 = 0.1447）。注释里的像素是参考图原值，
+    // 改任何一个之前先拿脚本重量一遍。
+    //
+    // ⚠️ 不要照 tools/render_title_preview.py 的常量写：那份脚本并不忠实于参考图
+    // （它把灰底画到 x=270 就收尾，卡片右下方留出一块空的深色底）。此前按它的
+    // CARD_H=87 实现，整张卡片是 3.56:1，而参考图实测 4.93:1——实物明显比样式图
+    // 更「高」，描边也粗了 3 倍。
     private const double DefaultCardWidthRatio = 0.21;
     private const double DefaultMarginBottomRatio = 0.06;
     private const double DefaultMarginRightRatio = 0.04;
@@ -34,37 +39,49 @@ public partial class TitleWindow : Window
     private const double DefaultFrameWidth = 1920.0;
     private const double DefaultFrameHeight = 1080.0;
 
+    // 内容区 2143 × 435 像素 = 4.93:1
     private const double DesignW = 310.0;
-    private const double DesignH = 87.0;
+    private const double DesignH = 62.9;
 
+    // 灰底：x 0..298.3，y 33.4..62.9（参考图 x 14..2075，y 361..564）
+    private const double GrayW = 298.3 / 310.0;
+    private const double GrayY = 33.4 / 62.9;
 
-    // 灰底填充：0..290
-    private const double GrayW = 290.0 / 310.0;
+    // 外框描边沿灰底一圈，浅色 #F2F5F7。
+    // 参考图量出来约 7 像素 ≈ 1.0 设计单位（此前用 3.0，粗了 3 倍）。
+    private const double BorderPx = 1.0 / 310.0;
 
-    // 外框描边矩形：0..288，stroke=3
-    private const double OutlineW = 288.0 / 310.0;
-    private const double BorderPx = 3.0 / 310.0;
+    // 蓝条：x 1.0..294.3，y 0.1..33.0（参考图 x 21..2047，y 131..358）
+    // 左上各留 1 个设计单位，正好让描边落在蓝条外沿。
+    private const double BarX = 1.0 / 310.0;
+    private const double BarY = 0.1 / 62.9;
+    private const double BarW = 293.3 / 310.0;
+    private const double BarH = 33.0 / 62.9;
 
-    // 蓝条：0..288 × 0..45
-    private const double BarW = 288.0 / 310.0;
-    private const double BarH = 45.0 / 87.0;
+    // 竖条：x 298.9..310.0，y 0..33.0（参考图 x 2079..2156，y 130..358）
+    //
+    // 关键：它与蓝条之间有 4.6 个设计单位的浅色缝（参考图 x 2048..2078 是空的），
+    // 是**独立一块**而不是贴着蓝条。之前两者相接，右端看起来就是一条通到底的
+    // 蓝条，竖条完全认不出来。
+    private const double AccentX = 298.9 / 310.0;
+    private const double AccentW = 11.1 / 310.0;
+    private const double AccentH = 33.0 / 62.9;
 
-    // 竖条：288.5..309.5 × 0..45
-    private const double AccentX = 288.5 / 310.0;
-    private const double AccentW = 21.0 / 310.0;
-    private const double AccentH = 45.0 / 87.0;
-
-    // Chip：x=3.5（7px @s=2），内边距 7，间距 6
+    // Chip：x=3.5，内边距 7，间距 6。参考图里没有色块，是解说端自己加的。
     private const double ChipX = 3.5 / 310.0;
     private const double ChipPad = 7.0 / 310.0;
     private const double ChipGap = 6.0 / 310.0;
 
-    // 底行：内容区高 = 87-45 = 42，行高 = 42 × 0.9
+    // 底行行高占灰底高的比例。参考图黑字墨迹高 151 像素 / 灰底 204 ≈ 0.74，
+    // 且上下居中（字心 463 对灰底中心 462.5），也就是字把灰底撑满。
     private const double RowH = 0.9;
 
     // 字号上限（设计单位）
-    private const double EventFontPx = 23.0;
-    private const double ProgFontPx = 19.0;
+    //
+    // 参考图里赛事名与机位名的墨迹高度实测 150 / 151 像素——**同号**，此前写成
+    // 23 / 19 是错的。墨迹高 ÷ 0.86（黑体汉字的实际墨迹约占 em 的 0.86）得字号。
+    private const double EventFontPx = 25.2;
+    private const double ProgFontPx = 25.2;
     private const double ChipFontRatio = 0.4;
     private const double LineBoxRatio = 1.5;
 
@@ -167,44 +184,46 @@ public partial class TitleWindow : Window
 
         var stroke = Math.Max(1, cardW * BorderPx);
 
-        // 灰底：0..290 × 0..87
-        Place(Card, 0, 0, cardW * GrayW, cardH);
+        // 灰底：y 33.4% 起铺到卡片底。灰底比蓝条宽（298.3 对 294.3），
+        // 左右各多出来一点，是参考图里就有的。
+        var grayTop = cardH * GrayY;
+        var grayH = cardH - grayTop;
+        Place(Card, 0, grayTop, cardW * GrayW, grayH);
 
-        // 外框描边：0..288 × 0..87
-        Place(CardOutline, 0, 0, cardW * OutlineW, cardH);
+        // 外框描边沿灰底一圈
+        Place(CardOutline, 0, grayTop, cardW * GrayW, grayH);
         CardOutline.StrokeThickness = stroke;
 
-        // 蓝条：0..288 × 0..45
-        Place(EventBar, 0, 0, cardW * BarW, cardH * BarH);
+        // 蓝条：左上各留一点，描边正好落在它的外沿
+        Place(EventBar, cardW * BarX, cardH * BarY, cardW * BarW, cardH * BarH);
         EventBar.BorderThickness = new Thickness(stroke);
 
-        // 竖条：288.5..309.5 × 0..45
+        // 竖条：与蓝条之间留着浅色缝，是独立一块
         Place(AccentBar, cardW * AccentX, 0, cardW * AccentW, cardH * AccentH);
 
-        // 底行
-        var bodyTop = cardH * BarH;
-        var bodyH = cardH - cardH * BarH;
-        var rowH = bodyH * RowH;
-        var rowY = bodyTop + (bodyH - rowH) / 2;
+        // 底行落在灰底里，垂直居中
+        var rowH = grayH * RowH;
+        var rowY = grayTop + (grayH - rowH) / 2;
 
-        Place(ProgramRow, 0, rowY, cardW, rowH);
+        Place(ProgramRow, cardW * ChipX, rowY, cardW * GrayW - cardW * ChipX, rowH);
 
-        // Chip：x=3.5，内边距 7，间距 6
+        // Chip：内边距 7，间距 6
         var chipPad = cardW * ChipPad;
-        StateChip.Margin = new Thickness(cardW * ChipX, 0, cardW * ChipGap, 0);
+        StateChip.Margin = new Thickness(0, 0, cardW * ChipGap, 0);
         StateChip.Padding = new Thickness(chipPad, 0, chipPad, 0);
         StateLabel.FontSize = Math.Max(8, rowH * ChipFontRatio);
         StateChip.Background = _chipBrush;
 
         // 机位名字号 + 水平偏移
         var progOffset = _config.ProgOffsetX * u;
-        var progAreaWidth = cardW * (1.0 - ChipX) - chipPad * 2 - cardW * ChipGap;
+        var progAreaWidth = cardW * GrayW - cardW * ChipX - chipPad * 2 - cardW * ChipGap;
         var progFont = FitFontSize(ProgramName.Text, progAreaWidth, ProgFontPx * u, rowH / LineBoxRatio);
         ProgramName.FontSize = progFont;
         ProgramName.RenderTransform = new TranslateTransform(progOffset, 0);
 
         // 赛事名字号
-        var barInner = cardW * BarW * 0.82;
+        // 蓝条左右各留一点给描边，文字可用宽度再收 0.92
+        var barInner = cardW * BarW * 0.92;
         EventNameText.FontSize = FitFontSize(
             EventNameText.Text, barInner, EventFontPx * u, cardH * BarH / LineBoxRatio);
 
