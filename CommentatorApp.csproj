@@ -14,9 +14,9 @@
       界面上的版本号也就失去意义（客户端靠它判断自己是否低于服务端要求的
       最低适配版本）。
     -->
-    <Version>1.5.4</Version>
-    <AssemblyVersion>1.5.4.0</AssemblyVersion>
-    <FileVersion>1.5.4.0</FileVersion>
+    <Version>1.5.5</Version>
+    <AssemblyVersion>1.5.5.0</AssemblyVersion>
+    <FileVersion>1.5.5.0</FileVersion>
     <Platforms>AnyCPU;x64</Platforms>
     <ApplicationIcon>favicon.ico</ApplicationIcon>
     <PlatformTarget>x64</PlatformTarget>
