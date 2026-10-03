@@ -39,33 +39,32 @@ public partial class TitleWindow : Window
     private const double DefaultFrameWidth = 1920.0;
     private const double DefaultFrameHeight = 1080.0;
 
-    // 内容区 2143 × 435 像素 = 4.93:1
+    // 内容区 2143 × 436 像素 = 4.92:1
     private const double DesignW = 310.0;
-    private const double DesignH = 62.9;
+    private const double DesignH = 63.0;
 
-    // 灰底：x 0..298.3，y 33.4..62.9（参考图 x 14..2075，y 361..564）
-    private const double GrayW = 298.3 / 310.0;
-    private const double GrayY = 33.4 / 62.9;
+    // 灰底：x 0..298.1，y 33.5..63.0（参考图 x 14..2075，y 361..564）
+    private const double GrayW = 298.1 / 310.0;
+    private const double GrayY = 33.5 / 63.0;
 
-    // 外框描边沿灰底一圈，浅色 #F2F5F7。
-    // 参考图量出来约 7 像素 ≈ 1.0 设计单位（此前用 3.0，粗了 3 倍）。
-    private const double BorderPx = 1.0 / 310.0;
-
-    // 蓝条：x 1.0..294.3，y 0.1..33.0（参考图 x 21..2047，y 131..358）
-    // 左上各留 1 个设计单位，正好让描边落在蓝条外沿。
-    private const double BarX = 1.0 / 310.0;
-    private const double BarY = 0.1 / 62.9;
-    private const double BarW = 293.3 / 310.0;
-    private const double BarH = 33.0 / 62.9;
-
-    // 竖条：x 298.9..310.0，y 0..33.0（参考图 x 2079..2156，y 130..358）
+    // 蓝条：x 1.0..294.1，y 1.5..31.8（参考图 x 21..2047，y 139..348）
     //
-    // 关键：它与蓝条之间有 4.6 个设计单位的浅色缝（参考图 x 2048..2078 是空的），
-    // 是**独立一块**而不是贴着蓝条。之前两者相接，右端看起来就是一条通到底的
-    // 蓝条，竖条完全认不出来。
-    private const double AccentX = 298.9 / 310.0;
-    private const double AccentW = 11.1 / 310.0;
-    private const double AccentH = 33.0 / 62.9;
+    // 左上各留 1 个多设计单位，那里在参考图里是透明的，因此会露出键色。
+    private const double BarX = 1.0 / 310.0;
+    private const double BarY = 1.5 / 63.0;
+    private const double BarW = 293.1 / 310.0;
+    private const double BarH = 30.4 / 63.0;
+
+    // 竖条：x 298.6..309.9，y 0..33.3（参考图 x 2079..2156，y 129..358）
+    //
+    // 它是一块**上下都比蓝条高**的凸出标签（蓝条 y 1.5..31.8，竖条 0..33.3），
+    // 不是齐平的一条。此前按齐平做，看着就是蓝条右端颜色略深的一块。
+    //
+    // 与蓝条之间有 4.5 个设计单位的缝，参考图里同样是透明的 → 露出键色。
+    private const double AccentX = 298.6 / 310.0;
+    private const double AccentY = 0.0;
+    private const double AccentW = 11.3 / 310.0;
+    private const double AccentH = 33.3 / 63.0;
 
     // Chip：x=3.5，内边距 7，间距 6。参考图里没有色块，是解说端自己加的。
     private const double ChipX = 3.5 / 310.0;
@@ -110,10 +109,34 @@ public partial class TitleWindow : Window
         return brush;
     }
 
+    /// <summary>
+    /// 解析配置里的颜色，解析不了就用默认色。
+    ///
+    /// 配置是手写的 JSON，一个手滑的 #GG0000 会让 ColorConverter 抛异常，而异常
+    /// 发生在构造函数里——窗口根本开不出来，现场只能干看着。这类值不值得为它崩掉
+    /// 整个程序。
+    /// </summary>
+    private static Brush FrozenOrDefault(string hex, string fallback)
+    {
+        try
+        {
+            return Frozen(string.IsNullOrWhiteSpace(hex) ? fallback : hex.Trim());
+        }
+        catch
+        {
+            return Frozen(fallback);
+        }
+    }
+
     public TitleWindow(AppConfig config)
     {
         InitializeComponent();
         _config = config;
+
+        // 窗口底色就是键色：卡片画不满的地方（竖条与蓝条之间、蓝条与灰底之间、
+        // 灰底右下方那一块）会自然露出底色，也就是交给采集端抠掉的键色。
+        // 不需要额外画任何色块——阶梯状轮廓本身就是由「哪些地方不画」构成的。
+        Background = FrozenOrDefault(config.KeyColor, "#FF00FF");
 
         _transitionStyle = TitleTransition.Normalize(config.Transition);
         _transitionDuration = TitleTransition.Duration(config.TransitionMs);
@@ -182,24 +205,17 @@ public partial class TitleWindow : Window
         var y = workPx.Bottom - workPx.Height * MarginBottomRatioForConfig() - cardH * scale;
         WindowHelper.MoveToPx(this, (int)Math.Round(x), (int)Math.Round(y));
 
-        var stroke = Math.Max(1, cardW * BorderPx);
-
         // 灰底：y 33.4% 起铺到卡片底。灰底比蓝条宽（298.3 对 294.3），
         // 左右各多出来一点，是参考图里就有的。
         var grayTop = cardH * GrayY;
         var grayH = cardH - grayTop;
         Place(Card, 0, grayTop, cardW * GrayW, grayH);
 
-        // 外框描边沿灰底一圈
-        Place(CardOutline, 0, grayTop, cardW * GrayW, grayH);
-        CardOutline.StrokeThickness = stroke;
-
-        // 蓝条：左上各留一点，描边正好落在它的外沿
+        // 蓝条：左上各留一点，那圈在参考图里是透明的，会露出键色
         Place(EventBar, cardW * BarX, cardH * BarY, cardW * BarW, cardH * BarH);
-        EventBar.BorderThickness = new Thickness(stroke);
 
-        // 竖条：与蓝条之间留着浅色缝，是独立一块
-        Place(AccentBar, cardW * AccentX, 0, cardW * AccentW, cardH * AccentH);
+        // 竖条：上下都比蓝条高，与蓝条之间留着一道缝，都是独立一块
+        Place(AccentBar, cardW * AccentX, cardH * AccentY, cardW * AccentW, cardH * AccentH);
 
         // 底行落在灰底里，垂直居中
         var rowH = grayH * RowH;
