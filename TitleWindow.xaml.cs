@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Shapes;
 using CommentatorApp.Models;
 using CommentatorApp.Services;
 
@@ -23,14 +22,18 @@ public partial class TitleWindow : Window
     // 窗口就是这张卡片本身：采集端把它当信号源抓走，再摆到输出画面的
     // 位置和大小上，所以窗口不透明、不做成整屏浮层（理由见 TitleWindow.xaml）。
     //
-    // 下面每一个数值都由 tools/measure_ref.py 量 tools/reference.png 换算而来，
-    // 设计宽取 310（换算系数 310 / 2143 = 0.1447）。注释里的像素是参考图原值，
-    // 改任何一个之前先拿脚本重量一遍。
+    // ⚠️ 下面每一个几何常数都是 tools/measure_preview.py 量 tools/title-preview.png
+    // 换算出来的实测值，量自图里第一张卡片（正在播送态）；量完的结论固化在
+    // tools/verify_geometry.py 里，跑一遍就知道还对不对。
     //
-    // ⚠️ 不要照 tools/render_title_preview.py 的常量写：那份脚本并不忠实于参考图
-    // （它把灰底画到 x=270 就收尾，卡片右下方留出一块空的深色底）。此前按它的
-    // CARD_H=87 实现，整张卡片是 3.56:1，而参考图实测 4.93:1——实物明显比样式图
-    // 更「高」，描边也粗了 3 倍。
+    // **那张图才是本项目的样式参照物。**同目录下的 tools/reference.png（央视原始
+    // 截图）**不是**：它的卡片是 4.92:1，这张是 3.563:1，比例根本对不上。
+    // 此前有人按 reference.png 改过一次，把竖条改成「上下都比蓝条高出一截的凸出
+    // 标签」，代码从此编译不过；量它的 tools/measure_edges.py 也一并删掉了，
+    // 免得下一个人拿它去「修正」一个本来就对的实现。
+    //
+    // 改任何一个常数之前：先 python tools/measure_preview.py 重量，
+    // 再改 tools/verify_geometry.py 里的实测值，最后 python tools/verify_geometry.py。
     private const double DefaultCardWidthRatio = 0.21;
     private const double DefaultMarginBottomRatio = 0.06;
     private const double DefaultMarginRightRatio = 0.04;
@@ -39,49 +42,78 @@ public partial class TitleWindow : Window
     private const double DefaultFrameWidth = 1920.0;
     private const double DefaultFrameHeight = 1080.0;
 
-    // 内容区 2143 × 436 像素 = 4.92:1
+    // 设计网格 310 × 87，卡片比例 3.563:1。
+    //
+    // 310 这个宽**包含右侧竖条**（竖条 x 288.5..310），不是主体宽度——主体到 288.5。
+    // 换算前提：预览图里那张卡片正好是 620 × 174 像素，即 1 设计单位 = 2 像素
+    // （那张卡片本身就是 2 倍超采样后没缩回来的产物）。
     private const double DesignW = 310.0;
-    private const double DesignH = 63.0;
+    private const double DesignH = 87.0;
 
-    // 灰底：x 0..298.1，y 33.5..63.0（参考图 x 14..2075，y 361..564）
-    private const double GrayW = 298.1 / 310.0;
-    private const double GrayY = 33.5 / 63.0;
+    // 描边宽 3 个设计单位（预览图上 6 像素），用 Border 的 BorderThickness
+    // **往内**画，理由见 Layout() 里的注释。
+    private const double BorderU = 3.0 / DesignW;
 
-    // 蓝条：x 1.0..294.1，y 1.5..31.8（参考图 x 21..2047，y 139..348）
+    // 灰底：外框 x 0..288.5，y 45.5..87（高 41.5）
     //
-    // 左上各留 1 个多设计单位，那里在参考图里是透明的，因此会露出键色。
-    private const double BarX = 1.0 / 310.0;
-    private const double BarY = 1.5 / 63.0;
-    private const double BarW = 293.1 / 310.0;
-    private const double BarH = 30.4 / 63.0;
-
-    // 竖条：x 298.6..309.9，y 0..33.3（参考图 x 2079..2156，y 129..358）
+    // 量到的「0..285.5」是**灰底填充**的右沿——它往右那 3 个单位是浅色描边
+    // #F2F5F7。所以灰底元素的外框和蓝条一样到 288.5，两条右端是同一条边。
     //
-    // 它是一块**上下都比蓝条高**的凸出标签（蓝条 y 1.5..31.8，竖条 0..33.3），
-    // 不是齐平的一条。此前按齐平做，看着就是蓝条右端颜色略深的一块。
+    // 顶边不描：它紧贴蓝条的下沿，蓝条自己那圈描边的下边就是这条缝，再画一道
+    // 就会出现一条图里根本没有的白线。
+    private const double GrayW = 288.5 / DesignW;
+    private const double GrayY = 45.5 / DesignH;
+
+    // 蓝条：x 0..288.5，y 0..45.5。蓝色固定，不随「正在/即将」变。
+    // 288.5 是外沿；描边往内占 3，蓝色填充的右沿落在 285.5，竖条从 288.5 起。
+    private const double BarW = 288.5 / DesignW;
+    private const double BarH = 45.5 / DesignH;
+
+    // 竖条：x 288.5..310，y 0..45.5（宽 21.5），自己没有描边。
     //
-    // 与蓝条之间有 4.5 个设计单位的缝，参考图里同样是透明的 → 露出键色。
-    private const double AccentX = 298.6 / 310.0;
-    private const double AccentY = 0.0;
-    private const double AccentW = 11.3 / 310.0;
-    private const double AccentH = 33.3 / 63.0;
+    // ⚠️ 与蓝条**齐平**（同一条 EDGE 描边收口），中间那道 3 个单位的浅色分隔
+    // 就是蓝条 BorderThickness 的右边，不是额外留的缝。
+    //
+    // 此前误按「上下都比蓝条高出一截的凸出标签」实现，那组值是从
+    // tools/reference.png 量来的——而那份图不是本项目的参照物，见上面那段说明。
+    // 不要再去动它；要动之前先用 tools/measure_preview.py 重量 title-preview.png。
+    private const double AccentX = 288.5 / DesignW;
+    private const double AccentW = 21.5 / DesignW;
+    private const double AccentH = 45.5 / DesignH;
 
-    // Chip：x=3.5，内边距 7，间距 6。参考图里没有色块，是解说端自己加的。
-    private const double ChipX = 3.5 / 310.0;
-    private const double ChipPad = 7.0 / 310.0;
-    private const double ChipGap = 6.0 / 310.0;
+    // 色块（Chip）：左沿 x 3.5，高 38（灰底高 41.5），左右内边距 5.0，
+    // 与机位名的间距 6.0。状态色块是解说端自己加的，预览图里就有两态对照。
+    //
+    // 内边距量的是色块内白字的左右留白。实测左 5.5 / 右 3.5，两侧不等是因为
+    // render_title_preview.py 把文字按**墨迹**居中而不是按字宽居中——墨迹包围盒对
+    // 「正在播送」这类字是有偏的，量到的 1 个单位差是偏心量不是内边距不对称。
+    // 取左侧那个值：5.5 / 5.5。
+    private const double ChipX = 3.5 / DesignW;
+    private const double ChipPad = 5.5 / DesignW;
+    private const double ChipGap = 6.0 / DesignW;
 
-    // 底行行高占灰底高的比例。参考图黑字墨迹高 151 像素 / 灰底 204 ≈ 0.74，
-    // 且上下居中（字心 463 对灰底中心 462.5），也就是字把灰底撑满。
-    private const double RowH = 0.9;
+    // 底行行高占灰底高的比例：38 / 41.5。
+    //
+    // 行高对得上，但图里色块是 y 46.0..84.0，并不严格垂直居中（居中应是 47.25）。
+    // 差的 1.25 个设计单位来自预览图脚本里那个 `- 2`（2 倍超采样，即 1 个设计单位）
+    // 的手工微调。这里仍然居中：在 1920 输出、卡片 403 像素宽时这 1.25 单位只有
+    // 1.6 像素，为了它引入一个常量不值得。看到色块略高于居中位置是正常的。
+    private const double RowH = 38.0 / 41.5;
 
     // 字号上限（设计单位）
     //
-    // 参考图里赛事名与机位名的墨迹高度实测 150 / 151 像素——**同号**，此前写成
-    // 23 / 19 是错的。墨迹高 ÷ 0.86（黑体汉字的实际墨迹约占 em 的 0.86）得字号。
-    private const double EventFontPx = 25.2;
-    private const double ProgFontPx = 25.2;
-    private const double ChipFontRatio = 0.4;
+    // 由墨迹高反推：黑体汉字的实际墨迹约占 em 的 0.86。
+    // 赛事名实测墨迹 22.0 -> 25.6；机位名 18.0 -> 20.9；色块内 14.5 -> 16.9。
+    // 墨迹高只算覆盖度 >= 0.85 的笔画像素（measure_preview.py 的 ink_box）；
+    // 阈值放宽到 0.80 赛事名会量成 22.5、收到 0.60 之前是 23.0，多出来的
+    // 全是笔画边缘的半覆盖像素，算进字号会把字撑大一号。
+    private const double EventFontPx = 22.0 / 0.86;
+    private const double ProgFontPx = 18.0 / 0.86;
+    // 色块字号直接按行高给：16.9 / 38 ≈ 0.445
+    private const double ChipFontRatio = 16.9 / 38.0;
+
+    // WPF 行盒高相对字号的经验倍数，只拿来当高度上限；实测字号远低于它，
+    // 正常情况下不会真的卡住。
     private const double LineBoxRatio = 1.5;
 
     private readonly AppConfig _config;
@@ -160,7 +192,10 @@ public partial class TitleWindow : Window
     }
 
     /// <summary>
-    /// 按 Python 的像素坐标摆元素。所有坐标相对 OverlayCanvas。
+    /// 按设计网格坐标摆元素。所有坐标相对 OverlayCanvas。
+    ///
+    /// 设计网格就是 tools/title-preview.png 那张卡片本身（310 × 87），因此
+    /// 「元素该放哪」不需要靠眼睛估，去 tools/measure_preview.py 重量就有。
     ///
     /// 尺寸以「输出画面宽度 × CardWidthRatio」为准，而不是当前显示器的宽度：
     /// 这块卡片是给信号链用的，按输出画面定尺寸，换一台分辨率不同的机器做
@@ -205,17 +240,28 @@ public partial class TitleWindow : Window
         var y = workPx.Bottom - workPx.Height * MarginBottomRatioForConfig() - cardH * scale;
         WindowHelper.MoveToPx(this, (int)Math.Round(x), (int)Math.Round(y));
 
-        // 灰底：y 33.4% 起铺到卡片底。灰底比蓝条宽（298.3 对 294.3），
-        // 左右各多出来一点，是参考图里就有的。
+        // 描边一律**往内**画：给 Border 设 BorderThickness，而不是给 Rectangle 设
+        // StrokeThickness。后者以路径为中心，有一半落在卡片外面被窗口裁掉，实际
+        // 露出来只有 1.5 个设计单位，描边比预期细一半——这不是「看起来略粗」的问题，
+        // 而是键色会从卡片边缘漏进来 1.5 个单位，抠像后卡片轮廓上会镶一道洋红。
+        var edge = cardW * BorderU;
+
+        // 灰底：顶边不描（左上为 0），它紧贴蓝条下沿，蓝条自己那圈描边的下边就是
+        // 这条缝，再描一道就会出现一条图里没有的白线。左右与下沿描边和蓝条对齐，
+        // 于是蓝条与灰底合成同一个矩形轮廓，只有右下角缺一块。
+        Card.BorderThickness = new Thickness(edge, 0, edge, edge);
+
         var grayTop = cardH * GrayY;
         var grayH = cardH - grayTop;
         Place(Card, 0, grayTop, cardW * GrayW, grayH);
 
-        // 蓝条：左上各留一点，那圈在参考图里是透明的，会露出键色
-        Place(EventBar, cardW * BarX, cardH * BarY, cardW * BarW, cardH * BarH);
+        // 蓝条：四边都描。描边内沿的蓝色填充右沿落在 285.5，竖条从 288.5 起。
+        EventBar.BorderThickness = new Thickness(edge);
+        Place(EventBar, 0, 0, cardW * BarW, cardH * BarH);
 
-        // 竖条：上下都比蓝条高，与蓝条之间留着一道缝，都是独立一块
-        Place(AccentBar, cardW * AccentX, cardH * AccentY, cardW * AccentW, cardH * AccentH);
+        // 竖条：不描边，纯一块深蓝；上下与蓝条齐平（BarH == AccentH 实测同值）。
+        // 它和灰底都不画到的右下角，会露出窗口底色，也就是交给采集端抠掉的键色。
+        Place(AccentBar, cardW * AccentX, 0, cardW * AccentW, cardH * AccentH);
 
         // 底行落在灰底里，垂直居中
         var rowH = grayH * RowH;
@@ -223,7 +269,7 @@ public partial class TitleWindow : Window
 
         Place(ProgramRow, cardW * ChipX, rowY, cardW * GrayW - cardW * ChipX, rowH);
 
-        // Chip：内边距 7，间距 6
+        // Chip：左右内边距 5，与机位名间距 6（实测值见常量区）
         var chipPad = cardW * ChipPad;
         StateChip.Margin = new Thickness(0, 0, cardW * ChipGap, 0);
         StateChip.Padding = new Thickness(chipPad, 0, chipPad, 0);

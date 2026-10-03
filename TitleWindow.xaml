@@ -12,10 +12,10 @@
         播送标题 = 一块不透明的包装卡片，窗口本身就是这张卡片。
 
         窗口底色（Background）就是**色度抠像的键色**，代码里按 config.KeyColor 设置。
-        卡片轮廓是**阶梯状**的：右端竖条是一块上下都凸出的标签，竖条与蓝条之间、
-        蓝条与灰底之间、以及灰底右下方都留空。这些位置在原始图形里是透明的，而本
-        窗口不能开 AllowsTransparency（分层窗口会被采集成黑屏），所以填键色、由采集
-        端抠掉。
+        卡片轮廓是**阶梯状**的：蓝条只画到 x 288.5、灰底只画到 y 45.5，所以窗口右下角
+        （x 288.5..310, y 45.5..87）没有任何元素覆盖，会露出底色。这些位置在原始图形里
+        是透明的，而本窗口不能开 AllowsTransparency（分层窗口会被采集成黑屏），所以填
+        键色、由采集端抠掉。
 
         因此不需要额外画任何色块——阶梯状轮廓本身就是「哪些地方不画」构成的。
 
@@ -30,12 +30,12 @@
         3. 顺带不用再操心「整屏透明浮层挡住桌面」——非透明的小窗口不点它
            就不会吃掉点击，鼠标穿透变成一个纯可选的手动开关。
 
-        命中测试只有整块画布一个入口，下面每一层都是 IsHitTestVisible="False"
-        的装饰件。Canvas 按子元素**逆序**命中测试，而 CardOutline 是个
-        Fill="Transparent" 的矩形——WPF 里透明填充照样参与命中测试（要
-        Fill="{x:Null}" 才不测），它又正好盖住 Card，于是挂在 Card 上的
-        ContextMenu 和 MouseLeftButtonDown 全都收不到事件：右键弹出来是
-        「什么都没有」，按住也拖不动窗口。
+        命中测试只有整块画布一个入口：下面每一层都是 IsHitTestVisible="False" 的装饰件，
+        ContextMenu 与 MouseLeftButtonDown 都挂在 OverlayCanvas 上。早先这里盖过一个
+        Fill="Transparent" 的描边矩形——WPF 里透明填充照样参与命中测试（要
+        Fill="{x:Null}" 才不测），它又正好盖住 Card，于是挂在 Card 上的 ContextMenu 和
+        MouseLeftButtonDown 全都收不到事件：右键弹出来是「什么都没有」，按住也拖不动
+        窗口。
     -->
     <Window.ContextMenu>
         <ContextMenu>
@@ -54,20 +54,25 @@
             Background="Transparent"
             MouseLeftButtonDown="OnDrag">
 
-        <!-- 灰色主体（只负责底色） -->
+        <!-- 灰色主体（只负责底色与轮廓）
+             描边由 Layout() 设 BorderThickness 往内画：左、右、下三边描，顶边不描
+             （顶边紧贴蓝条下沿，蓝条自己的下描边就是这条缝）。
+             BorderBrush 不能省——它就是采集端抠像之后卡片轮廓上那道浅色边。 -->
         <Border x:Name="Card"
                 Background="#DAE0E5"
+                BorderBrush="#F2F5F7"
                 IsHitTestVisible="False"/>
 
 
         <!--
             顶部蓝色标题栏。颜色固定，不随状态变。
-            没有描边：tools/reference.png 里一个浅色描边像素都没有（全图仅 706 个
-            抗锯齿残渣），此前那道「描边」其实是白底透出来的缝被误读成了描边。
-            蓝条四周露出的窗口底色就是键色，由采集端抠掉。
+            描边同上：四边都描，往内 3 个设计单位。
+            tools/title-preview.png 实测这道浅色描边有 3.0 个单位宽（预览图 6 像素），
+            蓝条与竖条之间、蓝条与灰底之间都是靠它分开的，抠像后必须留住。
         -->
         <Border x:Name="EventBar"
                 Background="#0054B7"
+                BorderBrush="#F2F5F7"
                 IsHitTestVisible="False">
             <TextBlock x:Name="EventNameText"
                        Text=""
@@ -78,7 +83,9 @@
                        TextTrimming="CharacterEllipsis"/>
         </Border>
 
-        <!-- 右侧竖条（颜色固定，不随状态变） -->
+        <!-- 右侧竖条（颜色固定，不随状态变）
+             没有描边：实测它与蓝条齐平、同收在蓝条那道描边上，自己再描一圈
+             会多出一道图里不存在的边。 -->
         <Border x:Name="AccentBar"
                 Background="#0046A5"
                 IsHitTestVisible="False"/>
