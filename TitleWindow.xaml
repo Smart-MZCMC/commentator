@@ -4,7 +4,7 @@
         Title="播送标题" Width="403" Height="82"
         WindowStyle="None" ResizeMode="NoResize" Topmost="True"
         ShowInTaskbar="False"
-        Background="#FF00FF"
+        Background="#00FF00"
         WindowStartupLocation="Manual">
 
 
@@ -97,7 +97,7 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <Border x:Name="StateChip" Grid.Column="0" Background="#48C4A0">
+            <Border x:Name="StateChip" Grid.Column="0" Background="#0F5588">
                 <TextBlock x:Name="StateLabel"
                            Text="正在播送"
                            FontWeight="Bold"

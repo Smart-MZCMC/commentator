@@ -128,7 +128,15 @@ public partial class TitleWindow : Window
     private static readonly Brush AccentBrush = Frozen("#0046A5");
 
     // ── Chip 颜色（唯一随状态变的元素） ──────────────────────────────
-    private static readonly Brush ChipOnAir = Frozen("#48C4A0");
+    //
+    // 在播是蓝不是绿，有两个原因：
+    //   1. 键色已经是纯绿 #00FF00，卡片里再留一块绿，键控范围一放宽就分不清哪块
+    //      是键、哪块是状态。改成蓝之后**整张卡片没有任何绿色**，绿键再没有风险。
+    //   2. #0F5588 是参考图自己在播态用的原色，回到它而不是自造一个色相。
+    //
+    // 不取蓝条那个 #0054B7：色块和蓝条同色时它就不再像一块状态标记，只剩下色块
+    // 的位置在说明「这里是状态」。#0F5588 比它暗、比它少一点饱和，两者能分辨。
+    private static readonly Brush ChipOnAir = Frozen("#0F5588");
     private static readonly Brush ChipPending = Frozen("#DC3737");
     private static readonly Brush ChipIdle = Frozen("#8A9099");
 
@@ -165,10 +173,13 @@ public partial class TitleWindow : Window
         InitializeComponent();
         _config = config;
 
-        // 窗口底色就是键色：卡片画不满的地方（竖条与蓝条之间、蓝条与灰底之间、
-        // 灰底右下方那一块）会自然露出底色，也就是交给采集端抠掉的键色。
+        // 窗口底色就是键色：卡片画不满的地方（竖条下方 x 288.5..310、y 45.5..87
+        // 那一块）会自然露出底色，也就是交给采集端抠掉的键色。
         // 不需要额外画任何色块——阶梯状轮廓本身就是由「哪些地方不画」构成的。
-        Background = FrozenOrDefault(config.KeyColor, "#FF00FF");
+        //
+        // 兜底值与 AppConfig.KeyColor / config.json 保持同一个纯绿。理由见
+        // AppConfig.cs 那段注释：EBU 绿离卡片自己的青绿状态块只有 20.9° 色相。
+        Background = FrozenOrDefault(config.KeyColor, "#00FF00");
 
         _transitionStyle = TitleTransition.Normalize(config.Transition);
         _transitionDuration = TitleTransition.Duration(config.TransitionMs);
@@ -243,7 +254,7 @@ public partial class TitleWindow : Window
         // 描边一律**往内**画：给 Border 设 BorderThickness，而不是给 Rectangle 设
         // StrokeThickness。后者以路径为中心，有一半落在卡片外面被窗口裁掉，实际
         // 露出来只有 1.5 个设计单位，描边比预期细一半——这不是「看起来略粗」的问题，
-        // 而是键色会从卡片边缘漏进来 1.5 个单位，抠像后卡片轮廓上会镶一道洋红。
+        // 而是键色会从卡片边缘漏进来 1.5 个单位，抠像后卡片轮廓上会镶一道键色的边。
         var edge = cardW * BorderU;
 
         // 灰底：顶边不描（左上为 0），它紧贴蓝条下沿，蓝条自己那圈描边的下边就是
