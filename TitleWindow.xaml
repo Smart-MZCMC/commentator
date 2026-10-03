@@ -1,26 +1,32 @@
 <Window x:Class="CommentatorApp.TitleWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="播送标题" Width="1920" Height="1080"
+        Title="播送标题" Width="403" Height="113"
         WindowStyle="None" ResizeMode="NoResize" Topmost="True"
         ShowInTaskbar="False"
-        AllowsTransparency="True" Background="Transparent"
+        Background="#DAE0E5"
         WindowStartupLocation="Manual">
 
     <!--
-        透明无边框 Overlay。所有元素直接画在 OverlayCanvas 上，
-        与 tools/render_title_preview.py 的绘制顺序一致：
-        灰底 → 外框 → 蓝条 → 竖条 → 文字。
+        播送标题 = 一块不透明的包装卡片，窗口本身就是这张卡片。
 
-        命中测试只有 OverlayCanvas 一个入口，下面每一层都是装饰件、
-        一律 IsHitTestVisible="False"。
+        为什么不用 AllowsTransparency 的全屏 16:9 浮层：
+        1. AllowsTransparency 会让 WPF 建 WS_EX_LAYERED 分层窗口，而分层窗口由
+           DWM 合成、不往窗口 DC 里画。采集软件用 PrintWindow（不带
+           PW_RENDERFULLCONTENT）或从窗口 DC BitBlt 抓它，拿到的就是一片黑。
+           实测：解说端状态窗口（普通不透明窗口）能正常采集，本窗口采不到。
+        2. 采集端既然能指定信号源在输出画面里的位置和大小（画中画），窗口就没
+           必要自己等于一张 16:9 画面。做成卡片那么大，源更小、缩放更清晰，
+           位置交给采集端摆。
+        3. 顺带不用再操心「整屏透明浮层挡住桌面」——非透明的小窗口不点它
+           就不会吃掉点击，鼠标穿透变成一个纯可选的手动开关。
 
-        为什么必须这样：Canvas 按子元素**逆序**命中测试，也就是最后声明的
-        CardOutline 先测。它是个 Fill="Transparent" 的矩形，而 WPF 里透明
-        填充照样参与命中测试（要 Fill="{x:Null}" 才不测），它又正好盖住
-        Card——于是挂在 Card 上的 ContextMenu 和 MouseLeftButtonDown
-        全都收不到事件：右键弹出来是「什么都没有」，按住也拖不动窗口。
-        菜单因此改挂到 Window 上，覆盖整个窗口，包括右端竖条那一条。
+        命中测试只有整块画布一个入口，下面每一层都是 IsHitTestVisible="False"
+        的装饰件。Canvas 按子元素**逆序**命中测试，而 CardOutline 是个
+        Fill="Transparent" 的矩形——WPF 里透明填充照样参与命中测试（要
+        Fill="{x:Null}" 才不测），它又正好盖住 Card，于是挂在 Card 上的
+        ContextMenu 和 MouseLeftButtonDown 全都收不到事件：右键弹出来是
+        「什么都没有」，按住也拖不动窗口。
     -->
     <Window.ContextMenu>
         <ContextMenu>

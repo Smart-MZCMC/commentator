@@ -18,26 +18,25 @@ namespace CommentatorApp;
 /// </summary>
 public partial class TitleWindow : Window
 {
-    // ── 信号链里的包装层 ──────────────────────────────────────────────
+    // ── 包装卡片 ──────────────────────────────────────────────────────
     //
-    // 窗口现在就是一张 16:9 画面：芯象把它当窗口源抓走、叠进直播画面，
-    // 卡片摆在画面里的下三分之一。窗口等于画面尺寸还有个附带好处——抓到的
-    // 源不需要再跟采集区域对齐，窗口在屏幕上摆哪儿都不影响播出。
+    // 窗口就是这张卡片本身：采集端把它当信号源抓走，再摆到输出画面的
+    // 位置和大小上，所以窗口不透明、不做成整屏浮层（理由见 TitleWindow.xaml）。
     //
-    // 画布尺寸走 config（CanvasWidth / CanvasHeight），这里只是兜底值。
-    private const double DefaultCanvasWidth = 1920.0;
-    private const double DefaultCanvasHeight = 1080.0;
-    private const double DefaultMarginBottomRatio = 0.06;
-    private const double DefaultMarginRightRatio = 0.04;
-    private const double DefaultCardWidthRatio = 0.21;
-
-    // ── 卡片内部几何 ──────────────────────────────────────────────────
-    //
-    // 基数照 tools/render_title_preview.py 的 CARD_W=300 / CARD_H=87 反推，
+    // 卡片内部按 tools/render_title_preview.py 的 CARD_W=300 / CARD_H=87 反推，
     // 竖条算进画布所以设计宽是 310。下面所有比例都以 DesignW / DesignH 为分母，
     // 实际像素 = 设计值 × u，u = 卡片宽 / DesignW。
+    private const double DefaultCardWidthRatio = 0.21;
+    private const double DefaultMarginBottomRatio = 0.06;
+    private const double DefaultMarginRightRatio = 0.04;
+
+    // 输出画面尺寸兜底值。走 config（CanvasWidth / CanvasHeight）。
+    private const double DefaultFrameWidth = 1920.0;
+    private const double DefaultFrameHeight = 1080.0;
+
     private const double DesignW = 310.0;
     private const double DesignH = 87.0;
+
 
     // 灰底填充：0..290
     private const double GrayW = 290.0 / 310.0;
@@ -75,9 +74,6 @@ public partial class TitleWindow : Window
     private TimeSpan _transitionDuration = TimeSpan.FromMilliseconds(300);
 
     private (bool HasPending, string Program) _lastState = (false, "");
-
-    /// <summary>鼠标穿透默认值是否已经落到窗口上，避免每次 Layout 都重复设。</summary>
-    private bool? _clickThroughApplied;
 
     // ── 固定颜色（蓝条 / 竖条不随状态变） ────────────────────────────
     private static readonly Brush BarBrush = Frozen("#0054B7");
@@ -126,83 +122,66 @@ public partial class TitleWindow : Window
     /// <summary>
     /// 按 Python 的像素坐标摆元素。所有坐标相对 OverlayCanvas。
     ///
-    /// 尺寸与位置都只认「窗口当前所在那块显示器」的工作区，并且一律先在
-    /// 物理像素里算清楚再换算。早期版本用的是 SystemParameters.WorkArea
-    /// （主显示器 + 系统 DPI 的 DIP），解说员把窗口拖到副屏后再一改大小，
-    /// 窗口就会被重新摆回主屏坐标系的某个位置，横跨屏幕边界只剩一半可见。
+    /// 尺寸以「输出画面宽度 × CardWidthRatio」为准，而不是当前显示器的宽度：
+    /// 这块卡片是给信号链用的，按输出画面定尺寸，换一台分辨率不同的机器做
+    /// 同一场直播时卡片不会跟着变样。
+    ///
+    /// 位置只认窗口当前所在那块显示器的工作区，并且一律先在物理像素里算清楚
+    /// 再换算。早期版本用的是 SystemParameters.WorkArea（主显示器 + 系统 DPI
+    /// 的 DIP），解说员把窗口拖到副屏后再一改大小，窗口就会被重新摆回主屏
+    /// 坐标系的某个位置，横跨屏幕边界只剩一半可见。
     /// </summary>
     private void Layout()
     {
         var workPx = WindowHelper.GetWorkAreaPx(this);
-        // 句柄还没建出来就没有工作区可依据。XAML 里的初值就是 1920×1080，
+        // 句柄还没建出来就没有工作区可依据。XAML 里的初值就是卡片尺寸，
         // 等 Loaded / SizeChanged 带着真实工作区再算一次即可。
         if (workPx.IsEmpty || workPx.Width <= 0 || workPx.Height <= 0) return;
 
         var scale = DpiScaleX;
-        var (canvasWpx, canvasHpx) = CanvasSizeForConfig();
+        var (frameWpx, _) = FrameSizeForConfig();
 
-        // 画布只缩不放，且必须完整留在屏幕内。
-        //
-        // 之前是「按配置尺寸居中摆放」，看着像个无损的居中，实际是：屏幕比
-        // 1920×1080 小的时候（1366×768、1440×900 这类笔记本）居中一个比屏幕
-        // 大的窗口，等于把大半张画面摆到屏外——现场看着就是「标题飞出屏幕」。
-        //
-        // 缩小是等比的，16:9 不会破；抓成信号源时芯象照旧把它缩放到输出分辨率，
-        // 抓到的仍然是一张干净的 16:9 画面。放大反而不行：桌面 4K 时没必要把
-        // 包装层撑到 3840，配置里写 1920 就是 1920。
-        var fit = Math.Min(1.0, Math.Min(workPx.Width / canvasWpx, workPx.Height / canvasHpx));
-        canvasWpx *= fit;
-        canvasHpx *= fit;
-
-        // 窗口尺寸用 DIP 赋值、窗口内部几何也全在 DIP 里；只有摆位和边距用物理像素。
-        // 除以 scale 是为了让物理尺寸正好等于上面的像素数——桌面缩放 150% 时
-        // 1920px 的包装层仍然是 1920 个物理像素，不会变成 2880 再被芯象缩回去。
-        var w = canvasWpx / scale;
-        var h = canvasHpx / scale;
-        if (w <= 0 || h <= 0) return;
-
-        Width = w;
-        Height = h;
-
-        // 画布居中摆在所在显示器上。窗口等于一张画面，这个位置只影响解说员本地
-        // 看到的浮层，抓成信号源时不影响播出结果。
-        var canvasX = workPx.Left + (workPx.Width - canvasWpx) / 2;
-        var canvasY = workPx.Top + (workPx.Height - canvasHpx) / 2;
-        WindowHelper.MoveToPx(this, (int)Math.Round(canvasX), (int)Math.Round(canvasY));
-
-        // 卡片按**画面**宽度定尺寸（不是显示器宽度）：屏幕一小、画面跟着缩了之后，
-        // CardWidthRatio 仍然要表示「占画面宽度的比例」，否则卡片会相对变大。
-        var cardW = canvasWpx * CardWidthRatioForConfig();
+        var cardW = frameWpx * CardWidthRatioForConfig();
         var u = cardW / DesignW;
         var cardH = DesignH * u;
+        if (cardW <= 0 || cardH <= 0) return;
 
-        // 画面内的下三分之一、靠右。压边留出电视自己的字幕栏位置。
-        var cardX = canvasX + canvasWpx - canvasWpx * MarginRightRatioForConfig() - cardW;
-        var cardY = canvasY + canvasHpx - canvasHpx * MarginBottomRatioForConfig() - cardH;
+        // 窗口尺寸用 DIP 赋值、窗口内部几何也全在 DIP 里；只有摆位和边距用物理
+        // 像素。除以 scale 是为了让物理尺寸正好等于上面算出的像素数——桌面缩放
+        // 150% 时一张 403px 的卡片仍然是 403 个物理像素，不会变成 605。
+        Width = cardW / scale;
+        Height = cardH / scale;
+
+        // 摆在所在显示器的右下角：解说员本地看它在画面下三分之一的位置，
+        // 免得压在导播正在看的机位上。抓成信号源时这个位置不影响播出结果，
+        // 采集端会按自己设置的画面位置摆。
+        var x = workPx.Right - workPx.Width * MarginRightRatioForConfig() - cardW;
+        var y = workPx.Bottom - workPx.Height * MarginBottomRatioForConfig() - cardH;
+        WindowHelper.MoveToPx(this, (int)Math.Round(x), (int)Math.Round(y));
 
         var stroke = Math.Max(1, cardW * BorderPx);
 
         // 灰底：0..290 × 0..87
-        Place(Card, cardX, cardY, cardW * GrayW, cardH);
+        Place(Card, 0, 0, cardW * GrayW, cardH);
 
         // 外框描边：0..288 × 0..87
-        Place(CardOutline, cardX, cardY, cardW * OutlineW, cardH);
+        Place(CardOutline, 0, 0, cardW * OutlineW, cardH);
         CardOutline.StrokeThickness = stroke;
 
         // 蓝条：0..288 × 0..45
-        Place(EventBar, cardX, cardY, cardW * BarW, cardH * BarH);
+        Place(EventBar, 0, 0, cardW * BarW, cardH * BarH);
         EventBar.BorderThickness = new Thickness(stroke);
 
         // 竖条：288.5..309.5 × 0..45
-        Place(AccentBar, cardX + cardW * AccentX, cardY, cardW * AccentW, cardH * AccentH);
+        Place(AccentBar, cardW * AccentX, 0, cardW * AccentW, cardH * AccentH);
 
         // 底行
-        var bodyTop = cardY + cardH * BarH;
+        var bodyTop = cardH * BarH;
         var bodyH = cardH - cardH * BarH;
         var rowH = bodyH * RowH;
         var rowY = bodyTop + (bodyH - rowH) / 2;
 
-        Place(ProgramRow, cardX, rowY, cardW, rowH);
+        Place(ProgramRow, 0, rowY, cardW, rowH);
 
         // Chip：x=3.5，内边距 7，间距 6
         var chipPad = cardW * ChipPad;
@@ -225,24 +204,6 @@ public partial class TitleWindow : Window
 
         EventBar.Background = BarBrush;
         AccentBar.Background = AccentBrush;
-
-        ApplyClickThroughDefault(workPx, canvasWpx, canvasHpx);
-    }
-
-    /// <summary>
-    /// 画布铺满显示器时默认打开鼠标穿透。
-    ///
-    /// 1920×1080 的包装层在 1080p 桌面上会盖住整块屏，不穿透的话操作员
-    /// 连桌面都点不进去。面积不到九成时保持可点，否则小窗口上想挪一下位置
-    /// 都得先取消穿透。
-    /// </summary>
-    private void ApplyClickThroughDefault(Rect workPx, double canvasWpx, double canvasHpx)
-    {
-        var covers = canvasWpx >= workPx.Width * 0.9 && canvasHpx >= workPx.Height * 0.9;
-        if (_clickThroughApplied == covers) return;
-        _clickThroughApplied = covers;
-        WindowHelper.SetClickThrough(this, covers);
-        if (ClickThroughItem is not null) ClickThroughItem.IsChecked = covers;
     }
 
     private static double FitFontSize(string text, double availableWidth, double maxSize, double heightCap)
@@ -273,18 +234,18 @@ public partial class TitleWindow : Window
     }
 
     /// <summary>
-    /// 画布尺寸（物理像素）。
+    /// 输出画面尺寸（物理像素），也就是卡片尺寸的设计基准。
     ///
-    /// 非 16:9 一律退回 1920×1080：窗口源是按采集端的输出比例缩放的，
-    /// 比例对不上就是变形或者裁边，而这种错在播出前很难一眼看出来。
-    /// 宁可忽略配置也不能放一个会悄悄坏掉的比例进信号链。
+    /// 只取宽度参与计算：卡片宽 = 画面宽 × CardWidthRatio，与画面高、与 16:9
+    /// 都无关。仍然校验比例是因为把宽高写反会得到一张明显偏小的卡片，而这种错
+    /// 在播出前很难一眼看出来。
     /// </summary>
-    private (double Width, double Height) CanvasSizeForConfig()
+    private (double Width, double Height) FrameSizeForConfig()
     {
         var w = _config.CanvasWidth;
         var h = _config.CanvasHeight;
-        if (w <= 0 || h <= 0) return (DefaultCanvasWidth, DefaultCanvasHeight);
-        if (Math.Abs(w / (double)h - 16.0 / 9.0) > 0.01) return (DefaultCanvasWidth, DefaultCanvasHeight);
+        if (w <= 0 || h <= 0) return (DefaultFrameWidth, DefaultFrameHeight);
+        if (Math.Abs(w / (double)h - 16.0 / 9.0) > 0.01) return (DefaultFrameWidth, DefaultFrameHeight);
         return (w, h);
     }
 
