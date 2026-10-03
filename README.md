@@ -280,6 +280,17 @@ dotnet publish --configuration Release --output publish
 
 ## 部署
 
+**下载最新版**：本仓库的 [Releases 页](https://github.com/Smart-MZCMC/commentator/releases)
+取 `commentator-<版本>-win-x64.zip`（由 `.github/workflows/release.yml` 在打
+`v<版本>` tag 时自动出包）；或本地 `dotnet publish --configuration Release --output publish`。
+
+::: warning 首次运行需要 .NET 10 桌面运行时
+Release 上发的是**依赖运行时**的包，不是自包含单文件：exe 旁边那些
+`.dll` / `.runtimeconfig.json` 都要留着，目标机器必须先装
+[.NET 10 桌面运行时（Desktop Runtime，x64）](https://dotnet.microsoft.com/download/dotnet/10.0)，
+否则双击会弹「必须安装 .NET 桌面运行时」。只有 SDK 也行，但没必要。
+:::
+
 发布后把 `publish/` 整个目录（含 `config.json`）拷到解说员机器上，双击 exe 即可。
 改服务器地址直接编辑 `config.json`，无需重新编译。
 
