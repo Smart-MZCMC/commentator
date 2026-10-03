@@ -126,11 +126,12 @@ public partial class TitleWindow : Window
     /// 这块卡片是给信号链用的，按输出画面定尺寸，换一台分辨率不同的机器做
     /// 同一场直播时卡片不会跟着变样。
     ///
-    /// 位置只认窗口当前所在那块显示器的工作区，并且一律先在物理像素里算清楚
-    /// 再换算。早期版本用的是 SystemParameters.WorkArea（主显示器 + 系统 DPI
-    /// 的 DIP），解说员把窗口拖到副屏后再一改大小，窗口就会被重新摆回主屏
-    /// 坐标系的某个位置，横跨屏幕边界只剩一半可见。
+    /// 单位：函数内除了 workPx 与 MoveToPx 的参数，全部是 DIP。位置只认窗口
+    /// 当前所在那块显示器的工作区——早期版本用的是 SystemParameters.WorkArea
+    /// （主显示器 + 系统 DPI 的 DIP），解说员把窗口拖到副屏后再一改大小，窗口
+    /// 就会被重新摆回主屏坐标系的某个位置，横跨屏幕边界只剩一半可见。
     /// </summary>
+
     private void Layout()
     {
         var workPx = WindowHelper.GetWorkAreaPx(this);
@@ -141,22 +142,27 @@ public partial class TitleWindow : Window
         var scale = DpiScaleX;
         var (frameWpx, _) = FrameSizeForConfig();
 
-        var cardW = frameWpx * CardWidthRatioForConfig();
+        // ── 单位只在这里换一次：往下全部是 DIP ──────────────────────────
+        //
+        // WPF 的窗口尺寸与元素几何都是 DIP，只有 MoveToPx 要物理像素。曾经把
+        // cardW / cardH 留在物理像素上、只给 Width/Height 除了一次 scale，于是
+        // 桌面缩放 150% 时窗口是 403/1.5 DIP、卡片却按 403 DIP 摆——卡片比窗口
+        // 大 1.5 倍，右端竖条整个落在窗口外、底行被切掉一半。100% 缩放下两者
+        // 数值相同，所以这个错在开发机上完全看不出来。
+        var cardW = frameWpx * CardWidthRatioForConfig() / scale;
         var u = cardW / DesignW;
         var cardH = DesignH * u;
         if (cardW <= 0 || cardH <= 0) return;
 
-        // 窗口尺寸用 DIP 赋值、窗口内部几何也全在 DIP 里；只有摆位和边距用物理
-        // 像素。除以 scale 是为了让物理尺寸正好等于上面算出的像素数——桌面缩放
-        // 150% 时一张 403px 的卡片仍然是 403 个物理像素，不会变成 605。
-        Width = cardW / scale;
-        Height = cardH / scale;
+        Width = cardW;
+        Height = cardH;
 
         // 摆在所在显示器的右下角：解说员本地看它在画面下三分之一的位置，
         // 免得压在导播正在看的机位上。抓成信号源时这个位置不影响播出结果，
         // 采集端会按自己设置的画面位置摆。
-        var x = workPx.Right - workPx.Width * MarginRightRatioForConfig() - cardW;
-        var y = workPx.Bottom - workPx.Height * MarginBottomRatioForConfig() - cardH;
+        // MoveToPx 收物理像素，所以这里要把 DIP 乘回 scale。
+        var x = workPx.Right - workPx.Width * MarginRightRatioForConfig() - cardW * scale;
+        var y = workPx.Bottom - workPx.Height * MarginBottomRatioForConfig() - cardH * scale;
         WindowHelper.MoveToPx(this, (int)Math.Round(x), (int)Math.Round(y));
 
         var stroke = Math.Max(1, cardW * BorderPx);
